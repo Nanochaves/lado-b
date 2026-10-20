@@ -189,6 +189,29 @@ nav.tabs button[aria-current="page"] svg{stroke:var(--accent)}
 .trk .d{font:12px var(--f-mono);color:var(--muted);font-variant-numeric:tabular-nums}
 .trk .nm{min-width:0;overflow-wrap:anywhere}
 .tp{font:12px var(--f-mono);color:var(--muted);white-space:nowrap}
+.back{border:0;background:none;color:var(--accent);font-weight:600;font-size:15px;padding:4px 0 12px}
+.dtop{display:grid;grid-template-columns:132px 1fr;gap:16px;align-items:end}
+.dcover{width:132px;aspect-ratio:1;border-radius:4px;overflow:hidden;background:var(--sunk);box-shadow:0 8px 20px rgb(0 0 0 / .2)}
+.dcover img,.dcover .gen{width:100%;height:100%;object-fit:cover}
+.dcover .gen{font-size:18px;padding:10px}.dcover .gen small{font-size:9px;margin-bottom:4px}
+.dinfo{min-width:0}
+.dtitle{font-size:clamp(24px,7vw,32px)}
+details.tracks{margin-top:12px;border-top:1px solid var(--line)}
+details.tracks summary{cursor:pointer;padding:10px 0;font-weight:600;font-size:14px;color:var(--accent);list-style:none}
+details.tracks summary::-webkit-details-marker{display:none}
+details.tracks summary::before{content:"▸ ";display:inline-block;transition:transform .2s}
+details.tracks[open] summary::before{transform:rotate(90deg)}
+.tlist{margin-top:4px}
+#v-disc .tlist{margin-top:18px}
+.tl-row{display:grid;grid-template-columns:34px 1fr auto auto;gap:10px;align-items:baseline;padding:8px 0;border-bottom:1px solid var(--line);font-size:14px}
+.tl-row .p{font:12px var(--f-mono);color:var(--muted)}
+.tl-row .nm{min-width:0;overflow-wrap:anywhere}
+.tl-row .n{font:12px var(--f-mono);color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}
+.tl-row .n.low{color:var(--warn);font-weight:500}
+.tl-row .d{font:12px var(--f-mono);color:var(--muted);font-variant-numeric:tabular-nums}
+.tl-sum{font-size:13.5px;color:var(--muted);margin:2px 0 6px}
+.authdone{position:fixed;inset:0;z-index:80;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;padding:24px max(16px,env(safe-area-inset-left,0px))}
+.authdone b{font-family:var(--f-display);font-stretch:75%;font-weight:800;font-size:28px}
 .tp.low{color:var(--warn);font-weight:500}
 .when{display:flex;align-items:center;gap:8px;font-size:13.5px;color:var(--muted);flex-wrap:wrap}
 .when select{border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:7px;color:var(--ink)}
@@ -253,6 +276,7 @@ nav.tabs button[aria-current="page"] svg{stroke:var(--accent)}
           <div class="meta" id="pMeta"></div>
           <div class="stats" id="pStats"></div>
           <p class="why" id="pWhy"></p>
+          <details class="tracks" id="pTracks"><summary>Ver temas</summary><div id="pTracksBody" class="tlist"></div></details>
         </div>
         <div class="actions">
           <button class="btn" id="again">Otro</button>
@@ -281,7 +305,26 @@ nav.tabs button[aria-current="page"] svg{stroke:var(--accent)}
       </select>
     </div>
     <ul class="list" id="shelf"></ul>
-    <button class="btn small more" id="shelfMore" hidden>Mostrar más</button>
+    <div id="shelfEnd" aria-hidden="true"></div>
+  </section>
+
+  <!-- DISCO -->
+  <section id="v-disc" hidden>
+    <button class="back" id="discBack">‹ Volver</button>
+    <div class="dtop">
+      <div class="dcover" id="dCover"></div>
+      <div class="dinfo">
+        <p class="artist" id="dArtist"></p>
+        <h2 class="title dtitle" id="dTitle"></h2>
+        <div class="meta" id="dMeta"></div>
+      </div>
+    </div>
+    <div class="stats" id="dStats"></div>
+    <div class="actions">
+      <button class="btn" id="dExcl">Sacar del sorteo</button>
+      <button class="btn primary" id="dPlay">Lo pongo</button>
+    </div>
+    <div id="dTracks" class="tlist"></div>
   </section>
 
   <!-- HISTORIAL -->
@@ -543,14 +586,19 @@ async function loadCounts(onProgress){
 function startLfmAuth(){
   if(!cfg.lKey||!cfg.lSecret){setStatus('#lStatus','Primero guardá la API key y el shared secret.','err');return}
   const cb=location.origin+location.pathname;
-  location.href='https://www.last.fm/api/auth/?api_key='+encodeURIComponent(cfg.lKey)+'&cb='+encodeURIComponent(cb);
+  const url='https://www.last.fm/api/auth/?api_key='+encodeURIComponent(cfg.lKey)+'&cb='+encodeURIComponent(cb);
+  // a separate tab keeps Last.fm out of the app's back-button history
+  const w=window.open(url,'_blank');
+  if(w)toast('Autorizá Lado B en Last.fm y volvé acá.',6000);else location.href=url;
 }
 async function finishLfmAuth(token){
   try{const j=await lfm('auth.getSession',{token},{signed:true});
     cfg.lSession=j.session.key;cfg.lName=j.session.name;if(!cfg.lUser)cfg.lUser=j.session.name;store.set('cfg',cfg);
     toast('Last.fm conectado como '+j.session.name+'.');
+    const done=el('div',{class:'authdone'},[el('b',{text:'Last.fm conectado'}),el('p',{class:'hint',text:'Ya podés cerrar esta pestaña y volver a Lado B.'}),el('button',{class:'btn small',text:'Seguir acá',onclick:()=>done.remove()})]);
+    document.body.append(done);setTimeout(()=>{try{window.close()}catch(e){}},600);
   }catch(e){toast(e.message,5000)}
-  history.replaceState(null,'',location.pathname);
+  history.replaceState({v:'pick',d:0},'',location.pathname);
 }
 
 /* ---------- grouping & matching ---------- */
@@ -669,6 +717,7 @@ function renderPick(animate){
     else e.append('Ningún disco cumple este modo con los filtros actuales. Probá otro modo o aflojá los filtros.');
     $('#pool').textContent='';return}
   const g=c.g;const s=$('#sleeve');s.textContent='';s.append(coverEl(g,true));
+  const det=$('#pTracks');if(det.dataset.gid!==g.gid){det.open=false;det.dataset.gid=g.gid;$('#pTracksBody').textContent=''}else if(det.open)fillTracks($('#pTracksBody'),g);
   $('#pArtist').textContent=g.artist;$('#pTitle').textContent=g.title;$('#pMeta').textContent=metaLine(g);
   const st=$('#pStats');st.textContent='';statPills(g).forEach(p=>st.append(p));
   $('#pWhy').textContent=whyLine(c);
@@ -723,15 +772,14 @@ function renderShelf(){
   list.sort(cmp);
   const ul=$('#shelf');ul.textContent='';
   list.slice(0,shelfLimit).forEach(g=>{
-    ul.append(el('li',{class:'row',tabindex:'0',role:'button',onclick:()=>showInPick(g),onkeydown:e=>{if(e.key==='Enter')showInPick(g)}},[
+    ul.append(el('li',{class:'row',tabindex:'0',role:'button',onclick:()=>openDisc(g),onkeydown:e=>{if(e.key==='Enter')openDisc(g)}},[
       el('div',{class:'thumb'},[coverEl(g,false)]),
       el('div',{class:'t'},[el('div',{class:'n',text:g.title}),el('div',{class:'a',text:g.artist+(g.year?' · '+g.year:'')+(excl.has(g.gid)?' · fuera del sorteo':'')})]),
       el('div',{class:'c'},[el('b',{text:g.exact?String(g.listens):g.scrobbles?'≈'+Math.max(1,Math.round(g.listens)):'0'}),g.bucket==='never'?'nunca':g.bucket==='old'?'+1 año':BUCKET_LABEL[g.bucket].replace('sonó ','')])
     ]))});
   if(!list.length)ul.append(el('li',{class:'row',style:'cursor:default;grid-template-columns:1fr'},[el('div',{class:'t'},[el('div',{class:'a',text:'Nada coincide con la búsqueda.'})])]));
-  $('#shelfMore').hidden=list.length<=shelfLimit;
+  shelfTotal=list.length;
 }
-function showInPick(g){current={g,p:weightOf(g),n:weighted(filtered()).length};sessionSeen.add(g.gid);setTab('pick');renderPick(true)}
 function weightOf(g){const w=weighted(filtered());const tot=w.reduce((s,x)=>s+x[1],0);const me=w.find(x=>x[0]===g);return me&&tot?me[1]/tot:0}
 function renderHist(){
   const ul=$('#hist');ul.textContent='';$('#histEmpty').hidden=hist.length>0;
@@ -755,12 +803,59 @@ function renderSettings(){
 function setStatus(sel,text,cls){const s=$(sel);s.className='status'+(cls?' '+cls:'');s.textContent=text}
 function refreshAll(){rebuild();renderFilters();renderSync();renderModes();if(!current||!groups.includes(current.g)){pick()}else{current.p=weightOf(current.g)}renderPick(false);if(!$('#v-shelf').hidden)renderShelf()}
 
-/* ---------- tabs ---------- */
+/* ---------- navigation (the phone's back button walks these states) ---------- */
+const cur=()=>history.state||{v:'pick',d:0};
+let shelfScroll=0;
+function showView(v,navTab){
+  if(!$('#v-shelf').hidden&&v!=='shelf')shelfScroll=window.scrollY;
+  ['pick','shelf','hist','settings','disc'].forEach(x=>$('#v-'+x).hidden=x!==v);
+  const t=navTab||v;$$('nav.tabs button').forEach(b=>{if(b.dataset.tab===t)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')});
+}
+function applyState(s){
+  s=s||{v:'pick',d:0};
+  if(!s.sheet&&!$('#scrim').hidden)hideSheet();
+  if(s.sheet)return;
+  if(s.v==='disc'){const g=groups.find(x=>x.gid===s.gid);if(!g){showView('shelf');renderShelf();return}renderDisc(g);showView('disc',s.from||'shelf');window.scrollTo(0,0);return}
+  const back=s.v==='shelf'&&!$('#v-disc').hidden;
+  showView(s.v);
+  if(s.v==='shelf'){if(!back)shelfLimit=60;renderShelf();window.scrollTo(0,back?shelfScroll:0)}else window.scrollTo(0,0);
+  if(s.v==='hist')renderHist();if(s.v==='settings')renderSettings();if(s.v==='pick')renderPick(false);
+}
 function setTab(t){
-  ['pick','shelf','hist','settings'].forEach(x=>$('#v-'+x).hidden=x!==t);
-  $$('nav.tabs button').forEach(b=>{if(b.dataset.tab===t)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')});
-  if(t==='shelf'){shelfLimit=60;renderShelf()}if(t==='hist')renderHist();if(t==='settings')renderSettings();
-  window.scrollTo(0,0);
+  const s=cur();
+  if(t==='pick'){if(s.d>0)history.go(-s.d);else applyState({v:'pick',d:0});return}
+  if(s.d===0){const n={v:t,d:1};history.pushState(n,'');applyState(n)}
+  else{const n={v:t,d:s.d};history.replaceState(n,'');applyState(n)}
+}
+function openDisc(g){const s=cur();const n={v:'disc',gid:g.gid,from:s.v==='disc'?s.from:s.v,d:s.d+1};history.pushState(n,'');applyState(n)}
+window.addEventListener('popstate',e=>applyState(e.state));
+
+/* ---------- record page & tracklists ---------- */
+function renderDisc(g){
+  const c=$('#dCover');c.textContent='';c.append(coverEl(g,true));
+  $('#dArtist').textContent=g.artist;$('#dTitle').textContent=g.title;$('#dMeta').textContent=metaLine(g);
+  const st=$('#dStats');st.textContent='';statPills(g).forEach(p=>st.append(p));
+  $('#dExcl').textContent=excl.has(g.gid)?'Volver a sumar al sorteo':'Sacar del sorteo';
+  $('#dExcl').onclick=()=>{if(excl.has(g.gid))excl.delete(g.gid);else excl.add(g.gid);store.set('excl',[...excl]);renderDisc(g);toast(excl.has(g.gid)?'Quedó fuera del sorteo.':'Volvió al sorteo.')};
+  $('#dPlay').onclick=()=>openSheet(g);
+  fillTracks($('#dTracks'),g);
+}
+async function fillTracks(box,g){
+  box.textContent='';
+  if(demo||g.items[0].id<0){box.append(el('p',{class:'tl-sum',text:'Disco de ejemplo: la lista de temas aparece cuando cargás tu colección de Discogs.'}));return}
+  const id=g.items[0].id;
+  if(!tlCache[id]){box.append(el('p',{class:'tl-sum'},[el('span',{class:'spinner'}),' Trayendo los temas de Discogs…']));
+    try{await loadTracklist(id);saveTl();scoreGroup(g)}catch(e){box.textContent='';box.append(el('p',{class:'status err',text:e.message}));return}
+    box.textContent='';}
+  const tl=tlCache[id];
+  if(!tl.tracks.length){box.append(el('p',{class:'tl-sum',text:'Discogs no tiene la lista de temas de esta edición.'}));return}
+  const plays=counts?.tracks?tl.tracks.map(t=>trackPlays(t,g)):null;const min=plays?Math.min(...plays):null;
+  const total=tl.tracks.reduce((a,t)=>a+(t.dur||0),0);
+  box.append(el('p',{class:'tl-sum',text:tl.tracks.length+' temas'+(total?' · '+Math.round(total/60)+' min':'')+(plays?' · ×N = veces que escuchaste cada tema; el disco cuenta las del menos escuchado':'')}));
+  let side='';
+  tl.tracks.forEach((t,i)=>{const sd=sideOf(t.pos);if(sd!==side){side=sd;box.append(el('div',{class:'side'},[el('span',{class:'eyebrow',text:sd})]))}
+    box.append(el('div',{class:'tl-row'},[el('span',{class:'p',text:t.pos}),el('span',{class:'nm',text:t.title}),
+      el('span',{class:'n'+(plays&&plays[i]===min?' low':''),text:plays?'×'+plays[i]:''}),el('span',{class:'d',text:t.dur?fmtDur(t.dur):''})]))});
 }
 
 /* ---------- scrobble sheet ---------- */
@@ -768,6 +863,7 @@ let sheet=null;
 async function openSheet(g){
   sheet={g,tracks:null,release:g.items[0]};
   $('#shArtist').textContent=g.artist;$('#shTitle').textContent=g.title;$('#shStatus').textContent='';$('#scrim').hidden=false;
+  if(!cur().sheet){const s=cur();history.pushState(Object.assign({},s,{sheet:true,d:s.d+1}),'')}
   const bd=$('#shBody');bd.textContent='';
   if(demo){bd.append(el('p',{class:'hint',text:'Esto es un disco de ejemplo. Cargá tu colección de Discogs y conectá Last.fm en Ajustes para scrobblear de verdad.'}));setGo();return}
   if(g.items.length>1){const s=el('select',{id:'shEd','aria-label':'Edición'});g.items.forEach((r,i)=>s.append(el('option',{value:String(i),text:[r.year||'',r.size,r.fmt==='Vinilo'?'':r.fmt].filter(Boolean).join(' · ')||'Edición '+(i+1)})));
@@ -816,8 +912,8 @@ function setGo(){
   b.textContent=sel.length?`Scrobblear ${sel.length} ${sel.length===1?'tema':'temas'} · ${mins} min`:'Elegí al menos un tema';
 }
 async function doScrobble(){
-  if(demo){closeSheet();setTab('settings');return}
-  if(!cfg.lSession){if(cfg.lKey&&cfg.lSecret)startLfmAuth();else{closeSheet();setTab('settings')}return}
+  if(demo){leaveSheet(()=>setTab('settings'));return}
+  if(!cfg.lSession){if(cfg.lKey&&cfg.lSecret)startLfmAuth();else leaveSheet(()=>setTab('settings'));return}
   const sel=sheet.tracks.filter(t=>t.on);if(!sel.length)return;
   const b=$('#shGo');b.disabled=true;b.textContent='Enviando a Last.fm…';
   const end=Math.floor(Date.now()/1000)-(+$('#shWhen').value)*60;let tcur=end;
@@ -841,7 +937,10 @@ async function doScrobble(){
   toast(accepted?`${accepted} ${accepted===1?'tema scrobbleado':'temas scrobbleados'} en Last.fm${ignored?` (${ignored} ignorados)`:''}.`:'Last.fm ignoró los temas. Revisá que el horario no sea de hace más de 2 semanas.',4500);
   if(current&&current.g===sheet?.g)renderPick(false);
 }
-function closeSheet(){$('#scrim').hidden=true}
+function hideSheet(){$('#scrim').hidden=true;const g=sheet?.g;
+  if(g&&!$('#v-disc').hidden)renderDisc(g);if(g&&current?.g===g){renderPick(false);if($('#pTracks').open)fillTracks($('#pTracksBody'),g)}}
+function closeSheet(){if(cur().sheet)history.back();else hideSheet()}
+function leaveSheet(fn){if(cur().sheet){window.addEventListener('popstate',()=>setTimeout(fn),{once:true});history.back()}else{hideSheet();fn()}}
 
 /* ---------- sync ---------- */
 let syncing=false;
@@ -893,10 +992,13 @@ $('#filterBtn').onclick=()=>{const f=$('#filters');f.hidden=!f.hidden;$('#filter
 [['#fFormat','format'],['#fFolder','folder'],['#fGenre','genre'],['#fDecade','decade'],['#fAvoid','avoid'],['#fFresh','fresh']].forEach(([id,k])=>$(id).onchange=e=>{
   prefs[k]=(k==='avoid'||k==='fresh')?+e.target.value:e.target.value;savePrefs();renderFilterSummary();sessionSeen.clear();pick();renderPick(true)});
 $('#again').onclick=()=>{pick();renderPick(true)};
+$('#pTracks').addEventListener('toggle',()=>{if($('#pTracks').open&&current)fillTracks($('#pTracksBody'),current.g)});
+$('#discBack').onclick=()=>history.back();
 $('#play').onclick=()=>current&&openSheet(current.g);
 $('#exclude').onclick=()=>{if(!current)return;excl.add(current.g.gid);store.set('excl',[...excl]);toast('“'+current.g.title+'” quedó fuera del sorteo. Lo podés volver a sumar en Ajustes.');pick();renderPick(true)};
 $('#q').oninput=()=>{shelfLimit=60;renderShelf()};$('#sort').onchange=()=>renderShelf();
-$('#shelfMore').onclick=()=>{shelfLimit+=100;renderShelf()};
+let shelfTotal=0;
+new IntersectionObserver(es=>{if(es.some(e=>e.isIntersecting)&&!$('#v-shelf').hidden&&shelfLimit<shelfTotal){shelfLimit+=60;renderShelf()}},{rootMargin:'600px 0px'}).observe($('#shelfEnd'));
 $('#shClose').onclick=closeSheet;$('#scrim').onclick=e=>{if(e.target.id==='scrim')closeSheet()};
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('#scrim').hidden)closeSheet()});
 $('#shGo').onclick=doScrobble;
@@ -912,8 +1014,12 @@ $('#wipe').onclick=()=>{$('#wipeConfirm').hidden=false};
 $('#wipeYes').onclick=()=>{store.wipe();location.reload()};
 
 /* ---------- boot ---------- */
+function reloadCfg(){const n=store.get('cfg',{});if(n.lSession&&n.lSession!==cfg.lSession){cfg=n;toast('Last.fm conectado como '+n.lName+'.');if(!$('#v-settings').hidden)renderSettings();if(sheet&&!$('#scrim').hidden)setGo()}}
+window.addEventListener('storage',e=>{if(e.key==='ladob.cfg')reloadCfg()});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)reloadCfg()});
 (async function boot(){
   const tok=new URLSearchParams(location.search).get('token');
+  if(!tok)history.replaceState({v:'pick',d:0},'',location.pathname);
   if(!cfg.dUser){const d=demoData();demo=true;coll=d.coll;counts=d.counts;$('#demoBanner').hidden=false}
   refreshAll();renderPick(false);
   if(tok)await finishLfmAuth(tok);
