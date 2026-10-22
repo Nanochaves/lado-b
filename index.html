@@ -210,6 +210,21 @@ details.tracks[open] summary::before{transform:rotate(90deg)}
 .tl-row .n.low{color:var(--warn);font-weight:500}
 .tl-row .d{font:12px var(--f-mono);color:var(--muted);font-variant-numeric:tabular-nums}
 .tl-sum{font-size:13.5px;color:var(--muted);margin:2px 0 6px}
+.tl-row{cursor:pointer}
+.tl-row:hover .nm{color:var(--accent)}
+.hist li{cursor:pointer}
+.hist li:hover{background:var(--sunk)}
+.hist li.gone{cursor:default}.hist li.gone:hover{background:none}
+.stop{display:grid;grid-template-columns:76px 1fr;gap:14px;align-items:center}
+.scover{width:76px;aspect-ratio:1;border-radius:3px;overflow:hidden;background:var(--sunk)}
+.scover img,.scover .gen{width:100%;height:100%;object-fit:cover}
+.scover .gen{font-size:12px;padding:6px}.scover .gen small{display:none}
+.stitle{font-size:clamp(24px,7vw,32px)}
+.snav{display:flex;justify-content:space-between;gap:8px;margin-top:14px}
+.lyrics{margin-top:16px;background:var(--surface);border-radius:var(--r);padding:18px 16px;font-size:16.5px;line-height:1.65;white-space:pre-line;overflow-wrap:anywhere;max-width:65ch}
+.lyrics .hint{font-size:14px;line-height:1.5;margin:0}
+.lsrc{font-size:12.5px;color:var(--muted);margin:10px 0 0}
+.lsrc a{color:var(--accent)}
 .authdone{position:fixed;inset:0;z-index:80;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;padding:24px max(16px,env(safe-area-inset-left,0px))}
 .authdone b{font-family:var(--f-display);font-stretch:75%;font-weight:800;font-size:28px}
 .tp.low{color:var(--warn);font-weight:500}
@@ -306,6 +321,23 @@ details.tracks[open] summary::before{transform:rotate(90deg)}
     </div>
     <ul class="list" id="shelf"></ul>
     <div id="shelfEnd" aria-hidden="true"></div>
+  </section>
+
+  <!-- TEMA -->
+  <section id="v-song" hidden>
+    <button class="back" id="songBack">‹ Volver</button>
+    <div class="stop">
+      <div class="scover" id="sCover"></div>
+      <div class="dinfo">
+        <p class="artist" id="sArtist"></p>
+        <h2 class="title stitle" id="sTitle"></h2>
+        <div class="meta" id="sMeta"></div>
+      </div>
+    </div>
+    <div class="stats" id="sStats"></div>
+    <div class="snav"><button class="btn small" id="sPrev">‹ Anterior</button><button class="btn small" id="sNext">Siguiente ›</button></div>
+    <div class="lyrics" id="sLyrics"></div>
+    <p class="lsrc" id="sSrc" hidden>Letra de <a href="https://lrclib.net" target="_blank" rel="noopener">LRCLIB</a>, base abierta mantenida por su comunidad.</p>
   </section>
 
   <!-- DISCO -->
@@ -476,6 +508,7 @@ let cfg=store.get('cfg',{});
 let prefs=Object.assign({mode:'balance',strength:1.4,format:'all',folder:'all',genre:'all',decade:'all',avoid:7,fresh:90},store.get('prefs',{}));
 let coll=store.get('coll',null);          // {user, fetchedAt, folders:[{id,name}], items:[...]}
 let counts=store.get('counts',null);      // {user, fetchedAt, overall:{k:n}, '7day':{...}, ...}
+let myCache=store.get('my',{});           // masterId -> original release year (0 = unknown)
 let tlCache=store.get('tl',{});           // releaseId -> {title,artist,tracks:[{pos,title,dur,artist}]}
 let hist=store.get('hist',[]);            // [{gid,artist,title,n,at}]
 let excl=new Set(store.get('excl',[]));
@@ -620,8 +653,11 @@ function rebuild(){
     const g=map.get(gid);g.items.push(r);r.genres.forEach(x=>g.genres.add(x));g.fmts.add(r.fmt);g.sizes.add(r.size);g.folders.add(r.folder);
     if(r.added&&r.added<g.added)g.added=r.added; if(!g.cover&&r.cover)g.cover=r.cover; if(r.year&&(!g.year||r.year<g.year))g.year=r.year;}
   groups=[...map.values()];
+  groups.forEach(g=>{g.edYear=g.year;applyYear(g)});
   for(const g of groups){const k=matchKey(g);g.key=k||keyOf(g.artist,g.title);g.matched=!!k;scoreGroup(g)}
 }
+function applyYear(g){const m=g.items[0].master;const y=m?myCache[m]:0;g.origKnown=!!y;g.year=y||g.edYear}
+async function loadMasterYear(masterId){const r=await discogs(`/masters/${masterId}`);myCache[masterId]=r.year||0;store.set('my',myCache);return myCache[masterId]}
 function scoreGroup(g){
   const c=counts||{overall:{}};const k=g.key;g.scrobbles=c.overall[k]||0;
   g.bucket='never';if(g.scrobbles>0){g.bucket='old';for(const p of PERIODS)if(c[p]&&c[p][k]){g.bucket=p;break}}
@@ -698,7 +734,7 @@ function statPills(g){
   if(counts&&!g.matched&&!demo&&!g.exact)out.push(el('span',{class:'pill',text:'sin coincidencia en Last.fm'}));
   return out;
 }
-function metaLine(g){const f=[...g.sizes].join(' / ');const y=g.year?String(g.year):'';const gn=[...g.genres][0]||'';
+function metaLine(g){const f=[...g.sizes].join(' / ');const y=g.year?String(g.year)+(g.origKnown&&g.edYear&&g.edYear!==g.year?' (edición '+g.edYear+')':''):'';const gn=[...g.genres][0]||'';
   return [y,f,gn,g.items.length>1?g.items.length+' ediciones':''].filter(Boolean).join(' · ')}
 function whyLine(c){const g=c.g;const pct=c.p*100;const odds=pct>=10?Math.round(pct)+'%':pct>=1?pct.toFixed(1).replace('.',',')+'%':'1 en '+Math.round(1/c.p);
   const m=prefs.mode;let r='';
@@ -783,7 +819,9 @@ function renderShelf(){
 function weightOf(g){const w=weighted(filtered());const tot=w.reduce((s,x)=>s+x[1],0);const me=w.find(x=>x[0]===g);return me&&tot?me[1]/tot:0}
 function renderHist(){
   const ul=$('#hist');ul.textContent='';$('#histEmpty').hidden=hist.length>0;
-  hist.slice().reverse().slice(0,200).forEach(h=>ul.append(el('li',{},[el('div',{class:'what'},[el('div',{text:h.title}),el('div',{text:h.artist+' · '+h.n+(h.n===1?' tema':' temas')})]),el('span',{class:'when',text:ago(h.at)})])));
+  hist.slice().reverse().slice(0,200).forEach(h=>{const g=groups.find(x=>x.gid===h.gid);
+    ul.append(el('li',g?{tabindex:'0',role:'button',onclick:()=>openDisc(g),onkeydown:e=>{if(e.key==='Enter')openDisc(g)}}:{class:'gone'},
+      [el('div',{class:'what'},[el('div',{text:h.title}),el('div',{text:h.artist+' · '+h.n+(h.n===1?' tema':' temas')+(g?'':' · ya no está en tu colección')})]),el('span',{class:'when',text:ago(h.at)})]))});
 }
 function renderExcl(){
   const ul=$('#excl');ul.textContent='';
@@ -808,13 +846,15 @@ const cur=()=>history.state||{v:'pick',d:0};
 let shelfScroll=0;
 function showView(v,navTab){
   if(!$('#v-shelf').hidden&&v!=='shelf')shelfScroll=window.scrollY;
-  ['pick','shelf','hist','settings','disc'].forEach(x=>$('#v-'+x).hidden=x!==v);
+  ['pick','shelf','hist','settings','disc','song'].forEach(x=>$('#v-'+x).hidden=x!==v);
   const t=navTab||v;$$('nav.tabs button').forEach(b=>{if(b.dataset.tab===t)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')});
 }
 function applyState(s){
   s=s||{v:'pick',d:0};
   if(!s.sheet&&!$('#scrim').hidden)hideSheet();
   if(s.sheet)return;
+  if(s.v==='song'){const g=groups.find(x=>x.gid===s.gid);const tl=g&&tlCache[g.items[0].id];
+    if(!g||!tl||!tl.tracks[s.ti]){showView('shelf');renderShelf();return}renderSong(g,s.ti);showView('song',s.from||'shelf');window.scrollTo(0,0);return}
   if(s.v==='disc'){const g=groups.find(x=>x.gid===s.gid);if(!g){showView('shelf');renderShelf();return}renderDisc(g);showView('disc',s.from||'shelf');window.scrollTo(0,0);return}
   const back=s.v==='shelf'&&!$('#v-disc').hidden;
   showView(s.v);
@@ -827,7 +867,10 @@ function setTab(t){
   if(s.d===0){const n={v:t,d:1};history.pushState(n,'');applyState(n)}
   else{const n={v:t,d:s.d};history.replaceState(n,'');applyState(n)}
 }
-function openDisc(g){const s=cur();const n={v:'disc',gid:g.gid,from:s.v==='disc'?s.from:s.v,d:s.d+1};history.pushState(n,'');applyState(n)}
+const fromOf=s=>(s.v==='disc'||s.v==='song')?s.from:s.v;
+function openDisc(g){const s=cur();const n={v:'disc',gid:g.gid,from:fromOf(s),d:s.d+1};history.pushState(n,'');applyState(n)}
+function openSong(g,ti){const s=cur();const n={v:'song',gid:g.gid,ti,from:fromOf(s),d:s.d+1};
+  if(s.v==='song'){n.d=s.d;history.replaceState(n,'')}else history.pushState(n,'');applyState(n)}
 window.addEventListener('popstate',e=>applyState(e.state));
 
 /* ---------- record page & tracklists ---------- */
@@ -854,8 +897,49 @@ async function fillTracks(box,g){
   box.append(el('p',{class:'tl-sum',text:tl.tracks.length+' temas'+(total?' · '+Math.round(total/60)+' min':'')+(plays?' · ×N = veces que escuchaste cada tema; el disco cuenta las del menos escuchado':'')}));
   let side='';
   tl.tracks.forEach((t,i)=>{const sd=sideOf(t.pos);if(sd!==side){side=sd;box.append(el('div',{class:'side'},[el('span',{class:'eyebrow',text:sd})]))}
-    box.append(el('div',{class:'tl-row'},[el('span',{class:'p',text:t.pos}),el('span',{class:'nm',text:t.title}),
+    box.append(el('div',{class:'tl-row',tabindex:'0',role:'button',onclick:()=>openSong(g,i),onkeydown:e=>{if(e.key==='Enter')openSong(g,i)}},[el('span',{class:'p',text:t.pos}),el('span',{class:'nm',text:t.title}),
       el('span',{class:'n'+(plays&&plays[i]===min?' low':''),text:plays?'×'+plays[i]:''}),el('span',{class:'d',text:t.dur?fmtDur(t.dur):''})]))});
+}
+
+/* ---------- song page & lyrics (LRCLIB: free, open, no key) ---------- */
+const lyrCache=new Map();
+function cleanTitle(t){return t.replace(/\s*[\(\[][^\)\]]*(remaster|version|mono|stereo|live|edit|mix)[^\)\]]*[\)\]]/ig,'').trim()}
+async function lrclib(params){
+  let r;try{r=await fetch('https://lrclib.net/api/search?'+new URLSearchParams(params))}catch(e){throw new Error('No pude conectar con el servicio de letras.')}
+  if(r.status===503){await sleep(1200);r=await fetch('https://lrclib.net/api/search?'+new URLSearchParams(params))}
+  if(!r.ok)throw new Error('El servicio de letras respondió con error '+r.status+'.');
+  return r.json();
+}
+async function findLyrics(t,g,album){
+  const artist=(t.artist||g.artist).split(', ')[0];const title=cleanTitle(t.title);const key=norm(artist)+'|'+norm(title);
+  if(lyrCache.has(key))return lyrCache.get(key);
+  let list=await lrclib({track_name:title,artist_name:artist});
+  if(!list.length)list=await lrclib({q:artist+' '+title});
+  const nt=norm(title),na=norm(artist),nal=norm(album||g.title);
+  const score=x=>(norm(x.trackName)===nt?4:0)+(norm(x.artistName).includes(na)||na.includes(norm(x.artistName))?3:0)+(norm(x.albumName)===nal?2:0)
+    +(t.dur&&x.duration&&Math.abs(x.duration-t.dur)<=3?2:0)+(x.plainLyrics?1:0)+(x.instrumental?0.5:0);
+  const good=list.filter(x=>score(x)>=6).sort((a,b)=>score(b)-score(a));
+  const best=good.find(x=>x.plainLyrics)||good.find(x=>x.instrumental)||null;
+  const res=best?{text:best.plainLyrics||'',instrumental:!!best.instrumental&&!best.plainLyrics}:null;
+  lyrCache.set(key,res);return res;
+}
+let songReq=0;
+async function renderSong(g,ti){
+  const tl=tlCache[g.items[0].id];const t=tl.tracks[ti];const req=++songReq;
+  const c=$('#sCover');c.textContent='';c.append(coverEl(g,true));
+  $('#sArtist').textContent=t.artist||g.artist;$('#sTitle').textContent=t.title;
+  $('#sMeta').textContent=[g.title,t.pos?(sideOf(t.pos)+' · '+t.pos):'',t.dur?fmtDur(t.dur):''].filter(Boolean).join(' · ');
+  const st=$('#sStats');st.textContent='';
+  if(counts?.tracks){const n=trackPlays(t,g);st.append(el('span',{class:'pill'+(n?'':' never'),text:n?('escuchado '+n+(n===1?' vez':' veces')):'nunca escuchado'}))}
+  const prev=$('#sPrev'),next=$('#sNext');prev.disabled=ti<=0;next.disabled=ti>=tl.tracks.length-1;
+  prev.onclick=()=>openSong(g,ti-1);next.onclick=()=>openSong(g,ti+1);
+  const box=$('#sLyrics');box.textContent='';$('#sSrc').hidden=true;
+  box.append(el('p',{class:'hint'},[el('span',{class:'spinner'}),' Buscando la letra…']));
+  let res;try{res=await findLyrics(t,g,tl.title)}catch(e){if(req!==songReq)return;box.textContent='';box.append(el('p',{class:'hint',text:e.message}));return}
+  if(req!==songReq)return;box.textContent='';
+  if(!res){box.append(el('p',{class:'hint',text:'No encontré la letra de este tema.'}));return}
+  if(res.instrumental){box.append(el('p',{class:'hint',text:'Tema instrumental.'}));$('#sSrc').hidden=false;return}
+  box.textContent=res.text;$('#sSrc').hidden=false;
 }
 
 /* ---------- scrobble sheet ---------- */
@@ -971,15 +1055,20 @@ async function sync(force){
 let crawling=false,crawlInfo='';
 async function crawl(){
   if(crawling||demo||!coll)return;crawling=true;
-  const todo=groups.filter(g=>g.items[0].id>0&&!tlCache[g.items[0].id]);const total=groups.length;let n=0;
+  const needTl=g=>!tlCache[g.items[0].id], needYr=g=>g.items[0].master&&myCache[g.items[0].master]===undefined;
+  const todo=groups.filter(g=>g.items[0].id>0&&(needTl(g)||needYr(g)));const total=groups.length;let n=0;
+  const gap=()=>sleep(cfg.dToken?1100:2500);
   for(const g of todo){
     if(syncing)break;
-    try{await loadTracklist(g.items[0].id);scoreGroup(g)}catch(e){if(/limitando|conectar/.test(e.message)){await sleep(30000);continue}tlCache[g.items[0].id]={title:g.title,artist:g.artist,tracks:[]}}
-    n++;crawlInfo=`Temas: ${total-todo.length+n}/${total} discos`;renderSync();
-    if(n%10===0){saveTl();if(!$('#v-shelf').hidden)renderShelf()}
-    await sleep(cfg.dToken?1100:2500);
+    try{
+      if(needTl(g)){await loadTracklist(g.items[0].id);scoreGroup(g);await gap()}
+      if(needYr(g)){await loadMasterYear(g.items[0].master);applyYear(g);await gap()}
+    }catch(e){if(/limitando|conectar/.test(e.message)){await sleep(30000);continue}
+      if(needTl(g))tlCache[g.items[0].id]={title:g.title,artist:g.artist,tracks:[]};if(needYr(g))myCache[g.items[0].master]=0}
+    n++;crawlInfo=`Datos: ${total-todo.length+n}/${total} discos`;renderSync();
+    if(n%10===0){saveTl();store.set('my',myCache);if(!$('#v-shelf').hidden)renderShelf()}
   }
-  saveTl();crawling=false;crawlInfo='';renderSync();
+  saveTl();store.set('my',myCache);crawling=false;crawlInfo='';renderSync();renderFilters();
   if(current)current.p=weightOf(current.g);renderPick(false);if(!$('#v-shelf').hidden)renderShelf();
 }
 
@@ -994,6 +1083,7 @@ $('#filterBtn').onclick=()=>{const f=$('#filters');f.hidden=!f.hidden;$('#filter
 $('#again').onclick=()=>{pick();renderPick(true)};
 $('#pTracks').addEventListener('toggle',()=>{if($('#pTracks').open&&current)fillTracks($('#pTracksBody'),current.g)});
 $('#discBack').onclick=()=>history.back();
+$('#songBack').onclick=()=>history.back();
 $('#play').onclick=()=>current&&openSheet(current.g);
 $('#exclude').onclick=()=>{if(!current)return;excl.add(current.g.gid);store.set('excl',[...excl]);toast('“'+current.g.title+'” quedó fuera del sorteo. Lo podés volver a sumar en Ajustes.');pick();renderPick(true)};
 $('#q').oninput=()=>{shelfLimit=60;renderShelf()};$('#sort').onchange=()=>renderShelf();
