@@ -114,6 +114,12 @@ header.top{display:flex;align-items:center;justify-content:space-between;gap:12p
 .linkbtn{border:0;background:none;color:var(--muted);font-size:13px;text-decoration:underline;text-underline-offset:3px;padding:6px 0}
 .under{display:flex;justify-content:space-between;align-items:center;width:100%;margin-top:6px;gap:10px;flex-wrap:wrap}
 .pool{font:12px var(--f-mono);color:var(--muted)}
+.count{flex:none;text-align:right;line-height:1;white-space:nowrap}
+.count b{display:block;font-family:var(--f-display);font-stretch:75%;font-weight:800;font-size:26px;font-variant-numeric:tabular-nums}
+.count span{font-size:11.5px;color:var(--muted)}
+.count.zero b{color:var(--warn)}
+.pooldetail{font:12px/1.4 var(--f-mono);color:var(--muted);margin:6px 0 0;min-height:1em}
+.pooldetail:empty{display:none}
 .empty{background:var(--surface);border-radius:var(--r);padding:20px;text-align:center;color:var(--muted);margin-top:18px}
 
 /* shelf */
@@ -262,7 +268,9 @@ details.tracks[open] summary::before{transform:rotate(90deg)}
     </div>
     <div class="filterbar">
       <button class="filterbtn" id="filterBtn" aria-expanded="false" aria-controls="filters"></button>
+      <div class="count" id="poolCount" aria-live="polite"></div>
     </div>
+    <p class="pooldetail" id="poolDetail"></p>
     <div class="filters" id="filters" hidden>
       <label>Formato<select id="fFormat"></select></label>
       <label>Carpeta<select id="fFolder"></select></label>
@@ -679,8 +687,30 @@ function trackPlays(t,g){
 }
 
 /* ---------- picking ---------- */
+function recentSet(){const cut=Date.now()-prefs.avoid*DAY;return new Set(prefs.avoid?hist.filter(h=>h.at>=cut).map(h=>h.gid):[])}
+function passAttrs(g){
+    if(prefs.format!=='all'){if(['LP','7"','12"','10"'].includes(prefs.format)){if(!g.sizes.has(prefs.format))return false}else if(!g.fmts.has(prefs.format))return false}
+    if(prefs.folder!=='all'&&!g.folders.has(+prefs.folder))return false;
+    if(prefs.genre!=='all'&&!g.genres.has(prefs.genre))return false;
+    if(prefs.decade!=='all'){const d=Math.floor((g.year||0)/10)*10;if(String(d)!==prefs.decade)return false}
+    return true}
+function poolStats(){
+  const recent=recentSet();const a=groups.filter(g=>!excl.has(g.gid));const b=a.filter(passAttrs);const c=b.filter(g=>!recent.has(g.gid));
+  return {total:groups.length,excl:groups.length-a.length,attrs:a.length-b.length,recent:b.length-c.length,mode:c.length-weighted(c).length,n:weighted(c).length};
+}
+function renderPool(){
+  const st=poolStats();const c=$('#poolCount');c.textContent='';c.classList.toggle('zero',!st.n);
+  c.append(el('b',{text:String(st.n)}),el('span',{text:st.n===1?'disco en juego':'discos en juego'}));
+  const parts=[];
+  if(st.n!==st.total)parts.push('de '+st.total);
+  if(st.attrs)parts.push(st.attrs+' por filtros');
+  if(st.mode)parts.push(st.mode+' no entran en “'+MODES.find(m=>m.id===prefs.mode).name+'”');
+  if(st.recent)parts.push(st.recent+' escuchados hace poco');
+  if(st.excl)parts.push(st.excl+' fuera del sorteo');
+  $('#poolDetail').textContent=parts.length>1?parts.join(' · '):'';
+}
 function filtered(){
-  const avoidCut=Date.now()-prefs.avoid*DAY;const recent=new Set(prefs.avoid?hist.filter(h=>h.at>=avoidCut).map(h=>h.gid):[]);
+  const recent=recentSet();
   return groups.filter(g=>{
     if(excl.has(g.gid))return false;
     if(prefs.format!=='all'){if(['LP','7"','12"','10"'].includes(prefs.format)){if(!g.sizes.has(prefs.format))return false}else if(!g.fmts.has(prefs.format))return false}
@@ -746,7 +776,7 @@ function whyLine(c){const g=c.g;const pct=c.p*100;const odds=pct>=10?Math.round(
   if(m==='random')r='Pura suerte.';
   return r+' Chance: '+odds+'.'}
 function renderPick(animate){
-  const c=current;$('#stageWrap').hidden=!c;$('#pickEmpty').hidden=!!c;
+  const c=current;$('#stageWrap').hidden=!c;$('#pickEmpty').hidden=!!c;renderPool();
   if(!c){const e=$('#pickEmpty');e.textContent='';
     if(!groups.length)e.append('Todavía no hay discos cargados.');
     else if(prefs.mode==='never'&&!counts)e.append('Conectá Last.fm en Ajustes para saber cuáles nunca escuchaste.');
@@ -757,7 +787,7 @@ function renderPick(animate){
   $('#pArtist').textContent=g.artist;$('#pTitle').textContent=g.title;$('#pMeta').textContent=metaLine(g);
   const st=$('#pStats');st.textContent='';statPills(g).forEach(p=>st.append(p));
   $('#pWhy').textContent=whyLine(c);
-  $('#pool').textContent='Sorteando entre '+c.n+(c.n===1?' disco':' discos');
+  $('#pool').textContent='';
   const d=$('#deck');if(animate){d.classList.remove('spin');void d.offsetWidth;d.classList.add('spin')}
 }
 function renderModes(){
